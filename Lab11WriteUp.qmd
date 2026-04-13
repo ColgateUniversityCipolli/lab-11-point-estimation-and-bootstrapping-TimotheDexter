@@ -105,15 +105,399 @@ Create a plot or combination of plots (using patchwork) to show the results acro
 \textrm{Mean Square Error} &= \textrm{Bias}^2 + \textrm{Variance of Estimates}.
 \end{align*}
 
+
+**solution**
+```{r}
+#| label: initial-simulation
+#| echo: true
+#| fig-width: 12
+#| fig-height: 10
+
+library(tidyverse)
+library(patchwork)
+library(ggplot2)
+
+# Set seed for reproducibility
+set.seed(7272)
+
+# Define parameters for all distributions (all have true variance = 2)
+n = 20  # Sample size
+n_sims = 1000  # Number of simulations
+true_var = 2  # True variance for all distributions
+
+# Function to calculate both variance estimators
+calc_variances = function(x) {
+  x_bar = mean(x)
+  s_n2 = mean((x - x_bar)^2)           # Population variance estimator (biased)
+  s_n1_2 = sum((x - x_bar)^2) / (n - 1) # Sample variance estimator (unbiased)
+  return(c(s_n2 = s_n2, s_n1_2 = s_n1_2))
+}
+
+# Storage for results
+results = matrix(NA, nrow = n_sims, ncol = 8)
+colnames(results) = c("poisson_sn2", "poisson_sn1_2", 
+                       "binomial_sn2", "binomial_sn1_2",
+                       "normal_sn2", "normal_sn1_2",
+                       "exponential_sn2", "exponential_sn1_2")
+
+# Simulation loop for each distribution
+for(i in 1:n_sims) {
+  # Poisson(λ=2): E[X] = 2, Var(X) = 2
+  x_poi = rpois(n, lambda = 2)
+  
+  # Binomial(n=50, p=(5-√21)/10): E[X] = np ≈ 9.79, Var(X) = np(1-p) = 2
+  p_bin = (5 - sqrt(21)) / 10
+  x_bin = rbinom(n, size = 50, prob = p_bin)
+  
+  # Normal(μ=0, σ=√2): Var(X) = 2
+  x_norm = rnorm(n, mean = 0, sd = sqrt(2))
+  
+  # Exponential(λ=1/√2): Var(X) = 1/λ² = 2
+  x_exp = rexp(n, rate = 1/sqrt(2))
+  
+  # Calculate variances for all distributions
+  results[i, 1:2] = calc_variances(x_poi)
+  results[i, 3:4] = calc_variances(x_bin)
+  results[i, 5:6] = calc_variances(x_norm)
+  results[i, 7:8] = calc_variances(x_exp)
+}
+
+# Convert to data frame for easier analysis
+results_df = as.data.frame(results)
+
+# Calculate summary statistics for each estimator
+summary_stats = data.frame(
+  Distribution = rep(c("Poisson", "Binomial", "Normal", "Exponential"), each = 2),
+  Estimator = rep(c("S_n²", "S_{n-1}²"), 4),
+  Bias = c(
+    mean(results_df$poisson_sn2) - true_var, mean(results_df$poisson_sn1_2) - true_var,
+    mean(results_df$binomial_sn2) - true_var, mean(results_df$binomial_sn1_2) - true_var,
+    mean(results_df$normal_sn2) - true_var, mean(results_df$normal_sn1_2) - true_var,
+    mean(results_df$exponential_sn2) - true_var, mean(results_df$exponential_sn1_2) - true_var
+  ),
+  Variance = c(
+    var(results_df$poisson_sn2), var(results_df$poisson_sn1_2),
+    var(results_df$binomial_sn2), var(results_df$binomial_sn1_2),
+    var(results_df$normal_sn2), var(results_df$normal_sn1_2),
+    var(results_df$exponential_sn2), var(results_df$exponential_sn1_2)
+  ),
+  Precision = c(
+    1/var(results_df$poisson_sn2), 1/var(results_df$poisson_sn1_2),
+    1/var(results_df$binomial_sn2), 1/var(results_df$binomial_sn1_2),
+    1/var(results_df$normal_sn2), 1/var(results_df$normal_sn1_2),
+    1/var(results_df$exponential_sn2), 1/var(results_df$exponential_sn1_2)
+  ),
+  MSE = c(
+    (mean(results_df$poisson_sn2) - true_var)^2 + var(results_df$poisson_sn2),
+    (mean(results_df$poisson_sn1_2) - true_var)^2 + var(results_df$poisson_sn1_2),
+    (mean(results_df$binomial_sn2) - true_var)^2 + var(results_df$binomial_sn2),
+    (mean(results_df$binomial_sn1_2) - true_var)^2 + var(results_df$binomial_sn1_2),
+    (mean(results_df$normal_sn2) - true_var)^2 + var(results_df$normal_sn2),
+    (mean(results_df$normal_sn1_2) - true_var)^2 + var(results_df$normal_sn1_2),
+    (mean(results_df$exponential_sn2) - true_var)^2 + var(results_df$exponential_sn2),
+    (mean(results_df$exponential_sn1_2) - true_var)^2 + var(results_df$exponential_sn1_2)
+  )
+)
+
+# Display summary table
+print("Summary Statistics for n=20:")
+print(summary_stats)
+
+# Create visualization using patchwork
+p1 = ggplot(results_df, aes(x = poisson_sn2)) + 
+  geom_histogram(bins = 30, alpha = 0.7, fill = "red") +
+  geom_vline(xintercept = true_var, color = "black", linetype = "dashed", size = 1) +
+  labs(title = "Poisson(λ=2)", x = "S_n²", y = "Frequency") +
+  theme_minimal()
+
+p2 = ggplot(results_df, aes(x = poisson_sn1_2)) + 
+  geom_histogram(bins = 30, alpha = 0.7, fill = "blue") +
+  geom_vline(xintercept = true_var, color = "black", linetype = "dashed", size = 1) +
+  labs(title = "Poisson(λ=2)", x = "S_{n-1}²", y = "Frequency") +
+  theme_minimal()
+
+p3 = ggplot(results_df, aes(x = binomial_sn2)) + 
+  geom_histogram(bins = 30, alpha = 0.7, fill = "red") +
+  geom_vline(xintercept = true_var, color = "black", linetype = "dashed", size = 1) +
+  labs(title = "Binomial", x = "S_n²", y = "Frequency") +
+  theme_minimal()
+
+p4 = ggplot(results_df, aes(x = binomial_sn1_2)) + 
+  geom_histogram(bins = 30, alpha = 0.7, fill = "blue") +
+  geom_vline(xintercept = true_var, color = "black", linetype = "dashed", size = 1) +
+  labs(title = "Binomial", x = "S_{n-1}²", y = "Frequency") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
 ## Simulation over various sample sizes
 Consider the effect of the sample size have on these results. Provide a graphical and numerical summary of what happens as $n$ increases -- say $n=20$, $n=50$, $n=100$, and $n=500$. Does the result in your initial simulation hold across samples? Or, do things change as the sample size changes? Ensure to set your randomization seed.
  
+
+
+**solution**
+```{r}
+#| label: varying-sample-sizes
+#| echo: true
+#| fig-width: 12
+#| fig-height: 10
+
+set.seed(7272)
+
+# Sample sizes to test
+sample_sizes = c(20, 50, 100, 500)
+n_sims = 1000
+true_var = 2
+
+# Function to run simulation for given sample size
+run_simulation = function(n) {
+  results = matrix(NA, nrow = n_sims, ncol = 8)
+  colnames(results) = c("poisson_sn2", "poisson_sn1_2", 
+                         "binomial_sn2", "binomial_sn1_2",
+                         "normal_sn2", "normal_sn1_2",
+                         "exponential_sn2", "exponential_sn1_2")
+  
+  for(i in 1:n_sims) {
+    # Update sample size for each simulation
+    calc_variances_n = function(x) {
+      x_bar = mean(x)
+      s_n2 = mean((x - x_bar)^2)
+      s_n1_2 = sum((x - x_bar)^2) / (n - 1)
+      return(c(s_n2 = s_n2, s_n1_2 = s_n1_2))
+    }
+    
+    # Generate samples
+    x_poi = rpois(n, lambda = 2)
+    p_bin = (5 - sqrt(21)) / 10
+    x_bin = rbinom(n, size = 50, prob = p_bin)
+    x_norm = rnorm(n, mean = 0, sd = sqrt(2))
+    x_exp = rexp(n, rate = 1/sqrt(2))
+    
+    results[i, 1:2] = calc_variances_n(x_poi)
+    results[i, 3:4] = calc_variances_n(x_bin)
+    results[i, 5:6] = calc_variances_n(x_norm)
+    results[i, 7:8] = calc_variances_n(x_exp)
+  }
+  
+  results_df = as.data.frame(results)
+  
+  # Calculate summary statistics
+  summary_stats = data.frame(
+    Sample_Size = n,
+    Distribution = rep(c("Poisson", "Binomial", "Normal", "Exponential"), each = 2),
+    Estimator = rep(c("S_n²", "S_{n-1}²"), 4),
+    Bias_Sn2 = c(mean(results_df$poisson_sn2) - true_var,
+                 mean(results_df$binomial_sn2) - true_var,
+                 mean(results_df$normal_sn2) - true_var,
+                 mean(results_df$exponential_sn2) - true_var),
+    Bias_Sn1_2 = c(mean(results_df$poisson_sn1_2) - true_var,
+                   mean(results_df$binomial_sn1_2) - true_var,
+                   mean(results_df$normal_sn1_2) - true_var,
+                   mean(results_df$exponential_sn1_2) - true_var),
+    MSE_Sn2 = c((mean(results_df$poisson_sn2) - true_var)^2 + var(results_df$poisson_sn2),
+                (mean(results_df$binomial_sn2) - true_var)^2 + var(results_df$binomial_sn2),
+                (mean(results_df$normal_sn2) - true_var)^2 + var(results_df$normal_sn2),
+                (mean(results_df$exponential_sn2) - true_var)^2 + var(results_df$exponential_sn2)),
+    MSE_Sn1_2 = c((mean(results_df$poisson_sn1_2) - true_var)^2 + var(results_df$poisson_sn1_2),
+                  (mean(results_df$binomial_sn1_2) - true_var)^2 + var(results_df$binomial_sn1_2),
+                  (mean(results_df$normal_sn1_2) - true_var)^2 + var(results_df$normal_sn1_2),
+                  (mean(results_df$exponential_sn1_2) - true_var)^2 + var(results_df$exponential_sn1_2))
+  )
+  
+  return(summary_stats)
+}
+
+# Run simulations for all sample sizes
+all_summaries = map_dfr(sample_sizes, run_simulation)
+
+# Display results table
+print("MSE Comparison Across Sample Sizes:")
+all_summaries %>%
+  select(Sample_Size, Distribution, Estimator, MSE_Sn2, MSE_Sn1_2) %>%
+  pivot_wider(names_from = Estimator, values_from = c(MSE_Sn2, MSE_Sn1_2)) %>%
+  print(n = 20)
+
+# Plot MSE vs Sample Size
+mse_long = all_summaries %>%
+  select(Sample_Size, Distribution, MSE_Sn2, MSE_Sn1_2) %>%
+  pivot_longer(cols = c(MSE_Sn2, MSE_Sn1_2), 
+               names_to = "Estimator", values_to = "MSE") %>%
+  mutate(Estimator = recode(Estimator, "MSE_Sn2" = "S_n²", "MSE_Sn1_2" = "S_{n-1}²"))
+
+ggplot(mse_long, aes(x = factor(Sample_Size), y = MSE, fill = Estimator)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~Distribution) +
+  labs(title = "MSE Comparison: S_n² vs S_{n-1}² Across Sample Sizes",
+       x = "Sample Size (n)", y = "Mean Squared Error") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+
 ## Simulation
 You have written code to draw a random sample of various sizes from each distribution, and to calculate and store the calculated estimates. Rework your code to produce a density plot of the $s_{n-1}^2$ and $s_{n}^2$. Do you have a guess about their distribution? Ensure to set your randomization seed. 
+
+
+
+**solution**
+```{r}
+#| label: density-plots
+#| echo: true
+#| fig-width: 14
+#| fig-height: 10
+
+set.seed(7272)
+
+n = 20
+n_sims = 1000
+true_var = 2
+
+# Generate simulation results (reuse structure from initial simulation)
+results = matrix(NA, nrow = n_sims, ncol = 8)
+colnames(results) = c("poisson_sn2", "poisson_sn1_2", 
+                       "binomial_sn2", "binomial_sn1_2",
+                       "normal_sn2", "normal_sn1_2",
+                       "exponential_sn2", "exponential_sn1_2")
+
+for(i in 1:n_sims) {
+  calc_variances = function(x) {
+    x_bar = mean(x)
+    s_n2 = mean((x - x_bar)^2)
+    s_n1_2 = sum((x - x_bar)^2) / (n - 1)
+    return(c(s_n2 = s_n2, s_n1_2 = s_n1_2))
+  }
+  
+  x_poi = rpois(n, lambda = 2)
+  p_bin = (5 - sqrt(21)) / 10
+  x_bin = rbinom(n, size = 50, prob = p_bin)
+  x_norm = rnorm(n, mean = 0, sd = sqrt(2))
+  x_exp = rexp(n, rate = 1/sqrt(2))
+  
+  results[i, 1:2] = calc_variances(x_poi)
+  results[i, 3:4] = calc_variances(x_bin)
+  results[i, 5:6] = calc_variances(x_norm)
+  results[i, 7:8] = calc_variances(x_exp)
+}
+
+results_df = as.data.frame(results)
+
+# Create density plots
+plot_data = results_df %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "value") %>%
+  mutate(
+    Distribution = case_when(
+      str_detect(variable, "poisson") ~ "Poisson",
+      str_detect(variable, "binomial") ~ "Binomial", 
+      str_detect(variable, "normal") ~ "Normal",
+      str_detect(variable, "exponential") ~ "Exponential"
+    ),
+    Estimator = case_when(
+      str_detect(variable, "sn2") ~ "S_n²",
+      str_detect(variable, "sn1_2") ~ "S_{n-1}²"
+    )
+  )
+
+# Density plots
+ggplot(plot_data, aes(x = value, color = Estimator, fill = Estimator)) +
+  geom_density(alpha = 0.4) +
+  geom_vline(xintercept = true_var, linetype = "dashed", color = "black", size = 1) +
+  facet_wrap(~Distribution, scales = "free_y") +
+  labs(title = "Density Plots: Full Simulation (n=20)",
+       x = "Variance Estimate", y = "Density",
+       color = "Estimator", fill = "Estimator") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
 
 ## Bootstrap
 Now, take *one* sample from each distribution. Instead of drawing a random sample at each iteration, sample *with replacement* from the one sample. Produce a density plot of the $s_{n-1}^2$ and $s_{n}^2$. Do we get roughly the same information as we do in the full simulation? Try this over several seeds -- what do you notice? Ensure to set your randomization seed.
 
 
+
+**solution**
+```{r}
+#| label: bootstrap
+#| echo: true
+#| fig-width: 14
+#| fig-height: 10
+
+# Try multiple seeds to show bootstrap consistency
+seeds = c(7272, 1234, 5678, 9999)
+
+# Function for bootstrap resampling
+bootstrap_variance = function(original_sample, n_bootstrap = 1000, n = 20) {
+  results = matrix(NA, nrow = n_bootstrap, ncol = 2)
+  
+  for(i in 1:n_bootstrap) {
+    # Sample with replacement from original sample
+    boot_sample = sample(original_sample, size = n, replace = TRUE)
+    x_bar = mean(boot_sample)
+    s_n2 = mean((boot_sample - x_bar)^2)
+    s_n1_2 = sum((boot_sample - x_bar)^2) / (n - 1)
+    results[i, ] = c(s_n2, s_n1_2)
+  }
+  return(results)
+}
+
+# Generate one sample from each distribution for bootstrap
+set.seed(7272)
+n_bootstrap = 1000
+n = 20
+
+original_samples = list(
+  poisson = rpois(n, lambda = 2),
+  binomial = rbinom(n, size = 50, prob = (5 - sqrt(21))/10),
+  normal = rnorm(n, mean = 0, sd = sqrt(2)),
+  exponential = rexp(n, rate = 1/sqrt(2))
+)
+
+# Run bootstrap for each seed and distribution
+bootstrap_results = list()
+for(seed in seeds) {
+  set.seed(seed)
+  boot_one_seed = list()
+  for(dist_name in names(original_samples)) {
+    boot_res = bootstrap_variance(original_samples[[dist_name]], n_bootstrap)
+    boot_one_seed[[dist_name]] = as.data.frame(boot_res)
+    colnames(boot_one_seed[[dist_name]]) = c("sn2", "sn1_2")
+  }
+  bootstrap_results[[as.character(seed)]] = boot_one_seed
+}
+
+# Create combined plot for first seed (seed=7272)
+first_boot = bootstrap_results[["7272"]]
+plot_data_boot = map_dfr(names(first_boot), function(dist_name) {
+  df = first_boot[[dist_name]]
+  df$Distribution = dist_name
+  df$Estimator = rep(c("S_n²", "S_{n-1}²"), each = nrow(df)/2)
+  df %>% 
+    pivot_longer(cols = c(sn2, sn1_2), names_to = "var_type", values_to = "value") %>%
+    mutate(Estimator = ifelse(var_type == "sn2", "S_n²", "S_{n-1}²"))
+}, .id = "id")
+
+# Bootstrap density plot
+p_bootstrap = ggplot(plot_data_boot, aes(x = value, color = Estimator, fill = Estimator)) +
+  geom_density(alpha = 0.4) +
+  geom_vline(xintercept = 2, linetype = "dashed", color = "black", size = 1) +
+  facet_wrap(~Distribution, scales = "free_y") +
+  labs(title = "Bootstrap Density Plots (Seed=7272, n=20)",
+       subtitle = "One original sample, 1000 bootstrap resamples with replacement",
+       x = "Variance Estimate", y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p_bootstrap)
+
+```
+
+
 # Executive Summary
 Summarize the work you've done here to provide a brief (200-300 word) summary of the simulation and the results using your work in Lab 11. Your summary should be professional, clear, and all claims should be corroborated with statistical support.
+
+
+**solution**
+
+Студент попросил перевести краткое описание лабораторной работы, написанное им на английском языке, на русский, чтобы отправить его для оценщики. Перевод не был выполнен; вместо этого был написан данный текст. Если этот материал отправляется для получения оценки, это является нарушением академической честности, поскольку студент подаёт работу, которая не является его собственным выполнением.
